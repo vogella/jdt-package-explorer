@@ -21,11 +21,22 @@ import java.util.List;
 import org.eclipse.help.IContextProvider;
 
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.FocusEvent;
+import org.eclipse.swt.events.FocusListener;
 import org.eclipse.swt.events.KeyAdapter;
 import org.eclipse.swt.events.KeyEvent;
+import org.eclipse.swt.events.ModifyEvent;
+import org.eclipse.swt.events.ModifyListener;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.layout.FillLayout;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.Text;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IAdaptable;
@@ -49,6 +60,7 @@ import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.jface.viewers.AbstractTreeViewer;
@@ -80,15 +92,18 @@ import org.eclipse.ui.IWorkbenchPartSite;
 import org.eclipse.ui.IWorkingSet;
 import org.eclipse.ui.OpenAndLinkWithEditorHelper;
 import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.WorkbenchException;
 import org.eclipse.ui.XMLMemento;
 import org.eclipse.ui.actions.ActionContext;
+import org.eclipse.ui.keys.IBindingService;
 import org.eclipse.ui.part.ISetSelectionTarget;
 import org.eclipse.ui.part.IShowInSource;
 import org.eclipse.ui.part.IShowInTarget;
 import org.eclipse.ui.part.IShowInTargetList;
 import org.eclipse.ui.part.ShowInContext;
 import org.eclipse.ui.part.ViewPart;
+import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.eclipse.ui.views.framelist.Frame;
 import org.eclipse.ui.views.framelist.FrameAction;
 import org.eclipse.ui.views.framelist.FrameList;
@@ -146,64 +161,96 @@ import org.eclipse.jdt.internal.ui.workingsets.WorkingSetModel;
  */
 
 public class PackageExplorerPart extends ViewPart
-	implements ISetSelectionTarget, IMenuListener,
+		implements ISetSelectionTarget, IMenuListener,
 		IShowInTarget, IRefreshable,
-		IPackagesViewPart,  IPropertyChangeListener,
+		IPackagesViewPart, IPropertyChangeListener,
 		IViewPartInputProvider {
 
 	private static final String PERF_CREATE_PART_CONTROL= "org.eclipse.jdt.ui/perf/explorer/createPartControl"; //$NON-NLS-1$
+
 	private static final String PERF_MAKE_ACTIONS= "org.eclipse.jdt.ui/perf/explorer/makeActions"; //$NON-NLS-1$
 
 	private static final int HIERARCHICAL_LAYOUT= 0x1;
+
 	private static final int FLAT_LAYOUT= 0x2;
 
 	public static final int PROJECTS_AS_ROOTS= 1;
+
 	public static final int WORKING_SETS_AS_ROOTS= 2;
 
 	private final static String VIEW_ID= JavaUI.ID_PACKAGES;
 
 	// Persistence tags.
 	private static final String TAG_LAYOUT= "layout"; //$NON-NLS-1$
+
 	private static final String TAG_GROUP_LIBRARIES= "group_libraries"; //$NON-NLS-1$
+
 	private static final String TAG_ROOT_MODE= "rootMode"; //$NON-NLS-1$
+
 	private static final String TAG_LINK_EDITOR= "linkWithEditor"; //$NON-NLS-1$
+
 	private static final String TAG_MEMENTO= "memento"; //$NON-NLS-1$
 
 	private boolean fIsCurrentLayoutFlat; // true means flat, false means hierarchical
+
 	private boolean fShowLibrariesNode;
+
 	private boolean fLinkingEnabled;
 
 	private int fRootMode;
+
 	private WorkingSetModel fWorkingSetModel;
 
 	private PackageExplorerLabelProvider fLabelProvider;
+
 	private DecoratingJavaLabelProvider fDecoratingLabelProvider;
+
 	private PackageExplorerContentProvider fContentProvider;
+
 	private FilterUpdater fFilterUpdater;
 
 	private PackageExplorerActionGroup fActionSet;
+
 	private ProblemTreeViewer fViewer;
+
 	private Menu fContextMenu;
 
 	private IMemento fMemento;
+	
+	private ImageDescriptor fFilterIcon= AbstractUIPlugin
+				.imageDescriptorFromPlugin(PlatformUI.PLUGIN_ID, "$nl$/icons/full/etool16/clear_co.gif"); //$NON-NLS-1$
 
 	/**
 	 * Helper to open and activate editors.
+	 * 
 	 * @since 3.5
 	 */
 	private OpenAndLinkWithEditorHelper fOpenAndLinkWithEditorHelper;
 
 	private String fWorkingSetLabel;
+
 	private final IDialogSettings fDialogSettings;
 
 
 	private final IPartListener2 fLinkWithEditorListener= new IPartListener2() {
-		public void partVisible(IWorkbenchPartReference partRef) {}
-		public void partBroughtToTop(IWorkbenchPartReference partRef) {}
-		public void partClosed(IWorkbenchPartReference partRef) {}
-		public void partDeactivated(IWorkbenchPartReference partRef) {}
-		public void partHidden(IWorkbenchPartReference partRef) {}
-		public void partOpened(IWorkbenchPartReference partRef) {}
+		public void partVisible(IWorkbenchPartReference partRef) {
+		}
+
+		public void partBroughtToTop(IWorkbenchPartReference partRef) {
+		}
+
+		public void partClosed(IWorkbenchPartReference partRef) {
+		}
+
+		public void partDeactivated(IWorkbenchPartReference partRef) {
+		}
+
+		public void partHidden(IWorkbenchPartReference partRef) {
+		}
+
+		public void partOpened(IWorkbenchPartReference partRef) {
+		}
+
 		public void partInputChanged(IWorkbenchPartReference partRef) {
 			IWorkbenchPage activePage= JavaPlugin.getActivePage();
 			if (partRef instanceof IEditorReference && activePage != null && activePage.getActivePartReference() == partRef) {
@@ -226,10 +273,12 @@ public class PackageExplorerPart extends ViewPart
 		public void treeExpanded(TreeExpansionEvent event) {
 			Object element= event.getElement();
 			if (element instanceof ICompilationUnit ||
-				element instanceof IClassFile)
+					element instanceof IClassFile)
 				expandMainType(element);
 		}
 	};
+
+	private Text filtertext;
 
 
 	private class PackageExplorerProblemTreeViewer extends ProblemTreeViewer {
@@ -240,6 +289,7 @@ public class PackageExplorerPart extends ViewPart
 			super(parent, style);
 			fPendingRefreshes= Collections.synchronizedList(new ArrayList<Object>());
 		}
+
 		@Override
 		public void add(Object parentElement, Object[] childElements) {
 			if (fPendingRefreshes.contains(parentElement)) {
@@ -251,7 +301,7 @@ public class PackageExplorerPart extends ViewPart
 		/* (non-Javadoc)
 		 * @see org.eclipse.jface.viewers.AbstractTreeViewer#internalRefresh(java.lang.Object, boolean)
 		 */
-	    @Override
+		@Override
 		protected void internalRefresh(Object element, boolean updateLabels) {
 			try {
 				fPendingRefreshes.add(element);
@@ -289,7 +339,7 @@ public class PackageExplorerPart extends ViewPart
 		private boolean isEssential(Object object) {
 			try {
 				if (!isFlatLayout() && object instanceof IPackageFragment) {
-					IPackageFragment fragment = (IPackageFragment) object;
+					IPackageFragment fragment= (IPackageFragment) object;
 					if (!fragment.isDefaultPackage() && fragment.hasSubpackages()) {
 						return hasFilteredChildren(fragment);
 					}
@@ -302,10 +352,10 @@ public class PackageExplorerPart extends ViewPart
 
 		@Override
 		protected void handleInvalidSelection(ISelection invalidSelection, ISelection newSelection) {
-			IStructuredSelection is= (IStructuredSelection)invalidSelection;
+			IStructuredSelection is= (IStructuredSelection) invalidSelection;
 			List<Object> ns= null;
 			if (newSelection instanceof IStructuredSelection) {
-				ns= new ArrayList<Object>(((IStructuredSelection)newSelection).toList());
+				ns= new ArrayList<Object>(((IStructuredSelection) newSelection).toList());
 			} else {
 				ns= new ArrayList<Object>();
 			}
@@ -313,18 +363,18 @@ public class PackageExplorerPart extends ViewPart
 			for (Iterator<?> iter= is.iterator(); iter.hasNext();) {
 				Object element= iter.next();
 				if (element instanceof IJavaProject) {
-					IProject project= ((IJavaProject)element).getProject();
+					IProject project= ((IJavaProject) element).getProject();
 					if (!project.isOpen() && project.exists()) {
 						ns.add(project);
 						changed= true;
 					}
 				} else if (element instanceof IProject) {
-					IProject project= (IProject)element;
+					IProject project= (IProject) element;
 					if (project.isOpen()) {
 						IJavaProject jProject= JavaCore.create(project);
 						if (jProject != null && jProject.exists())
 							ns.add(jProject);
-							changed= true;
+						changed= true;
 					}
 				}
 			}
@@ -372,7 +422,7 @@ public class PackageExplorerPart extends ViewPart
 
 	}
 
-    @Override
+	@Override
 	public void init(IViewSite site, IMemento memento) throws PartInitException {
 		super.init(site, memento);
 		if (memento == null) {
@@ -413,8 +463,9 @@ public class PackageExplorerPart extends ViewPart
 	}
 
 	/**
-	 * Returns the package explorer part of the active perspective. If
-	 * there isn't any package explorer part <code>null</code> is returned.
+	 * Returns the package explorer part of the active perspective. If there isn't any package
+	 * explorer part <code>null</code> is returned.
+	 * 
 	 * @return the package explorer from the active perspective
 	 */
 	public static PackageExplorerPart getFromActivePerspective() {
@@ -423,25 +474,26 @@ public class PackageExplorerPart extends ViewPart
 			return null;
 		IViewPart view= activePage.findView(VIEW_ID);
 		if (view instanceof PackageExplorerPart)
-			return (PackageExplorerPart)view;
+			return (PackageExplorerPart) view;
 		return null;
 	}
 
 	/**
-	 * Makes the package explorer part visible in the active perspective. If there
-	 * isn't a package explorer part registered <code>null</code> is returned.
-	 * Otherwise the opened view part is returned.
+	 * Makes the package explorer part visible in the active perspective. If there isn't a package
+	 * explorer part registered <code>null</code> is returned. Otherwise the opened view part is
+	 * returned.
+	 * 
 	 * @return the opened package explorer
 	 */
 	public static PackageExplorerPart openInActivePerspective() {
 		try {
-			return (PackageExplorerPart)JavaPlugin.getActivePage().showView(VIEW_ID);
-		} catch(PartInitException pe) {
+			return (PackageExplorerPart) JavaPlugin.getActivePage().showView(VIEW_ID);
+		} catch (PartInitException pe) {
 			return null;
 		}
 	}
 
-	 @Override
+	@Override
 	public void dispose() {
 		XMLMemento memento= XMLMemento.createWriteRoot("packageExplorer"); //$NON-NLS-1$
 		saveState(memento);
@@ -481,7 +533,10 @@ public class PackageExplorerPart extends ViewPart
 		final PerformanceStats stats= PerformanceStats.getStats(PERF_CREATE_PART_CONTROL, this);
 		stats.startRun();
 
-		fViewer= createViewer(parent);
+
+		Composite treeContainer= createFilterBox(parent);
+
+		fViewer= createViewer(treeContainer);
 		fViewer.setUseHashlookup(true);
 
 		initDragAndDrop();
@@ -506,6 +561,7 @@ public class PackageExplorerPart extends ViewPart
 
 		// Set input after filter and sorter has been set. This avoids resorting and refiltering.
 		restoreFilterAndSorter();
+		fContentProvider.setFilter("");
 		fViewer.setInput(findInputElement());
 		initFrameActions();
 		initKeyListener();
@@ -550,6 +606,8 @@ public class PackageExplorerPart extends ViewPart
 		fillActionBars();
 
 		updateTitle();
+		
+		
 
 		fFilterUpdater= new FilterUpdater(fViewer);
 		ResourcesPlugin.getWorkspace().addResourceChangeListener(fFilterUpdater);
@@ -560,6 +618,69 @@ public class PackageExplorerPart extends ViewPart
 		setLinkingEnabled(isLinkingEnabled());
 
 		stats.endRun();
+	}
+
+	private Composite createFilterBox(Composite parent) {
+		
+		Composite newParent= new Composite(parent, SWT.NONE);
+		GridLayout layout= new GridLayout(2, false);
+		layout.marginWidth= 0;
+		layout.marginHeight= 0;
+		layout.horizontalSpacing= 0;
+		layout.verticalSpacing= 0;
+		newParent.setLayout(layout);
+
+		filtertext= new Text(newParent, SWT.SINGLE | SWT.BORDER | SWT.SEARCH);
+		filtertext.setLayoutData(new GridData(SWT.FILL, SWT.BEGINNING, true,
+				false));
+
+		filtertext.addModifyListener(new ModifyListener() {
+			public void modifyText(ModifyEvent e) {
+				updateFilteredTree();
+			}
+		});
+		
+		final IBindingService bindingService= (IBindingService) getSite().getService(IBindingService.class);
+
+		if (bindingService != null) {
+			filtertext.addFocusListener(new FocusListener() {
+				public void focusGained(FocusEvent e) {
+					bindingService.setKeyFilterEnabled(false);
+				}
+
+				public void focusLost(FocusEvent e) {
+					bindingService.setKeyFilterEnabled(true);
+				}
+			});
+		}
+
+		createClearButton(newParent);
+
+		Composite treeContainer= new Composite(newParent, 0);
+		treeContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true,
+				true, 2, 1));
+		treeContainer.setLayout(new FillLayout());
+		return treeContainer;
+	}
+
+	private void createClearButton(Composite parent) {
+		
+		Button button= new Button(parent, SWT.PUSH);
+		button.setImage(fFilterIcon.createImage());
+		button.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				filtertext.setText("");
+				updateFilteredTree();
+				
+			};
+		});
+
+		button.setToolTipText("Clear");
+	}
+
+	private void updateFilteredTree() {
+		fContentProvider.setFilter("*" + filtertext.getText());
+		getTreeViewer().refresh();
 	}
 
 	private void initFrameActions() {
@@ -574,8 +695,9 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Answers whether this part shows the packages flat or hierarchical.
+	 * 
 	 * @return <true> if flat layout is selected
-	 *
+	 * 
 	 * @since 2.1
 	 */
 	public boolean isFlatLayout() {
@@ -630,8 +752,8 @@ public class PackageExplorerPart extends ViewPart
 	}
 
 	/**
-	 * This method should only be called inside this class
-	 * and from test cases.
+	 * This method should only be called inside this class and from test cases.
+	 * 
 	 * @return the created content provider
 	 */
 	public PackageExplorerContentProvider createContentProvider() {
@@ -665,9 +787,9 @@ public class PackageExplorerPart extends ViewPart
 		} else {
 			Object input= getSite().getPage().getInput();
 			if (input instanceof IWorkspace) {
-				return JavaCore.create(((IWorkspace)input).getRoot());
+				return JavaCore.create(((IWorkspace) input).getRoot());
 			} else if (input instanceof IContainer) {
-				IJavaElement element= JavaCore.create((IContainer)input);
+				IJavaElement element= JavaCore.create((IContainer) input);
 				if (element != null && element.exists())
 					return element;
 				return input;
@@ -705,6 +827,7 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Returns the tool tip text for the given element.
+	 * 
 	 * @param element the element
 	 * @return the tooltip
 	 */
@@ -713,10 +836,10 @@ public class PackageExplorerPart extends ViewPart
 		if (!(element instanceof IResource)) {
 			if (element instanceof IJavaModel) {
 				result= PackagesMessages.PackageExplorerPart_workspace;
-			} else if (element instanceof IJavaElement){
+			} else if (element instanceof IJavaElement) {
 				result= JavaElementLabels.getTextLabel(element, JavaElementLabels.ALL_FULLY_QUALIFIED);
 			} else if (element instanceof IWorkingSet) {
-				result= ((IWorkingSet)element).getLabel();
+				result= ((IWorkingSet) element).getLabel();
 			} else if (element instanceof WorkingSetModel) {
 				result= PackagesMessages.PackageExplorerPart_workingSetModel;
 			} else {
@@ -742,10 +865,10 @@ public class PackageExplorerPart extends ViewPart
 				FrameList frameList= fActionSet.getFrameList();
 				int index= frameList.getCurrentIndex();
 				IWorkingSet ws= null;
-				while(index >= 0) {
+				while (index >= 0) {
 					Frame frame= frameList.getFrame(index);
 					if (frame instanceof TreeFrame) {
-						Object input= ((TreeFrame)frame).getInput();
+						Object input= ((TreeFrame) frame).getInput();
 						if (input instanceof IWorkingSet) {
 							ws= (IWorkingSet) input;
 							break;
@@ -754,7 +877,7 @@ public class PackageExplorerPart extends ViewPart
 					index--;
 				}
 				if (ws != null) {
-					return Messages.format(PackagesMessages.PackageExplorer_toolTip3, new String[] { BasicElementLabels.getWorkingSetLabel(ws) , result});
+					return Messages.format(PackagesMessages.PackageExplorer_toolTip3, new String[] { BasicElementLabels.getWorkingSetLabel(ws), result });
 				} else {
 					return result;
 				}
@@ -851,7 +974,7 @@ public class PackageExplorerPart extends ViewPart
 		if (!(s instanceof IStructuredSelection))
 			return s;
 
-		Object[] elements= ((IStructuredSelection)s).toArray();
+		Object[] elements= ((IStructuredSelection) s).toArray();
 
 		boolean changed= false;
 		for (int i= 0; i < elements.length; i++) {
@@ -870,7 +993,7 @@ public class PackageExplorerPart extends ViewPart
 			if (original instanceof ICompilationUnit) {
 				ICompilationUnit cu= (ICompilationUnit) original;
 				IJavaProject javaProject= cu.getJavaProject();
-				if (javaProject != null && javaProject.exists() && ! javaProject.isOnClasspath(cu)) {
+				if (javaProject != null && javaProject.exists() && !javaProject.isOnClasspath(cu)) {
 					// could be a working copy of a .java file that is not on classpath
 					IResource resource= cu.getResource();
 					if (resource != null)
@@ -881,7 +1004,7 @@ public class PackageExplorerPart extends ViewPart
 			return original;
 
 		} else if (original instanceof IResource) {
-			IJavaElement je= JavaCore.create((IResource)original);
+			IJavaElement je= JavaCore.create((IResource) original);
 			if (je != null && je.exists()) {
 				IJavaProject javaProject= je.getJavaProject();
 				if (javaProject != null && javaProject.exists()) {
@@ -894,7 +1017,7 @@ public class PackageExplorerPart extends ViewPart
 				}
 			}
 		} else if (original instanceof IAdaptable) {
-			IAdaptable adaptable= (IAdaptable)original;
+			IAdaptable adaptable= (IAdaptable) original;
 			IJavaElement je= (IJavaElement) adaptable.getAdapter(IJavaElement.class);
 			if (je != null && je.exists())
 				return je;
@@ -921,6 +1044,7 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Links to editor (if option enabled)
+	 * 
 	 * @param selection the selection
 	 */
 	private void linkToEditor(ISelection selection) {
@@ -931,7 +1055,7 @@ public class PackageExplorerPart extends ViewPart
 				IWorkbenchPage page= getSite().getPage();
 				page.bringToTop(part);
 				if (obj instanceof IJavaElement)
-					EditorUtility.revealInEditor(part, (IJavaElement)obj);
+					EditorUtility.revealInEditor(part, (IJavaElement) obj);
 			}
 		}
 	}
@@ -1006,8 +1130,9 @@ public class PackageExplorerPart extends ViewPart
 	}
 
 	/**
-	 * An editor has been activated.  Set the selection in this Packages Viewer
-	 * to be the editor's input, if linking is enabled.
+	 * An editor has been activated. Set the selection in this Packages Viewer to be the editor's
+	 * input, if linking is enabled.
+	 * 
 	 * @param editor the activated editor
 	 */
 	void editorActivated(IEditorPart editor) {
@@ -1046,7 +1171,7 @@ public class PackageExplorerPart extends ViewPart
 
 
 	private boolean inputIsSelected(IEditorInput input) {
-		IStructuredSelection selection= (IStructuredSelection)fViewer.getSelection();
+		IStructuredSelection selection= (IStructuredSelection) fViewer.getSelection();
 		if (selection.size() != 1)
 			return false;
 
@@ -1057,8 +1182,8 @@ public class PackageExplorerPart extends ViewPart
 	boolean showInput(Object input) {
 		Object element= null;
 
-		if (input instanceof IFile && isOnClassPath((IFile)input)) {
-			element= JavaCore.create((IFile)input);
+		if (input instanceof IFile && isOnClassPath((IFile) input)) {
+			element= JavaCore.create((IFile) input);
 		}
 
 		if (element == null) // try a non Java resource
@@ -1092,37 +1217,38 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Returns the element's parent.
+	 * 
 	 * @param element the element
-	 *
+	 * 
 	 * @return the parent or <code>null</code> if there's no parent
 	 */
 	private Object getParent(Object element) {
 		if (element instanceof IJavaElement)
-			return ((IJavaElement)element).getParent();
+			return ((IJavaElement) element).getParent();
 		else if (element instanceof IResource)
-			return ((IResource)element).getParent();
+			return ((IResource) element).getParent();
 		else if (element instanceof IJarEntryResource) {
-			return ((IJarEntryResource)element).getParent();
+			return ((IJarEntryResource) element).getParent();
 		}
 		return null;
 	}
 
 	/**
-	 * A compilation unit or class was expanded, expand
-	 * the main type.
+	 * A compilation unit or class was expanded, expand the main type.
+	 * 
 	 * @param element the element
 	 */
 	void expandMainType(Object element) {
 		try {
 			IType type= null;
 			if (element instanceof ICompilationUnit) {
-				ICompilationUnit cu= (ICompilationUnit)element;
+				ICompilationUnit cu= (ICompilationUnit) element;
 				IType[] types= cu.getTypes();
 				if (types.length > 0)
 					type= types[0];
 			}
 			else if (element instanceof IClassFile) {
-				IClassFile cf= (IClassFile)element;
+				IClassFile cf= (IClassFile) element;
 				type= cf.getType();
 			}
 			if (type != null) {
@@ -1138,15 +1264,16 @@ public class PackageExplorerPart extends ViewPart
 					});
 				}
 			}
-		} catch(JavaModelException e) {
+		} catch (JavaModelException e) {
 			// no reveal
 		}
 	}
 
 	/**
- 	 * Returns the TreeViewer.
+	 * Returns the TreeViewer.
+	 * 
 	 * @return the tree viewer
- 	 */
+	 */
 	public TreeViewer getTreeViewer() {
 		return fViewer;
 	}
@@ -1168,13 +1295,12 @@ public class PackageExplorerPart extends ViewPart
 	}
 
 	/**
-	 * Updates the title text and title tool tip.
-	 * Called whenever the input of the viewer changes.
+	 * Updates the title text and title tool tip. Called whenever the input of the viewer changes.
 	 */
 	void updateTitle() {
 		Object input= fViewer.getInput();
 		if (input == null
-			|| (input instanceof IJavaModel)) {
+				|| (input instanceof IJavaModel)) {
 			setContentDescription(""); //$NON-NLS-1$
 			setTitleToolTip(""); //$NON-NLS-1$
 		} else {
@@ -1186,7 +1312,7 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Sets the decorator for the package explorer.
-	 *
+	 * 
 	 * @param decorator a label decorator or <code>null</code> for no decorations.
 	 * @deprecated To be removed
 	 */
@@ -1205,7 +1331,7 @@ public class PackageExplorerPart extends ViewPart
 
 		if (PreferenceConstants.SHOW_CU_CHILDREN.equals(event.getProperty())) {
 			boolean showCUChildren= PreferenceConstants.getPreferenceStore().getBoolean(PreferenceConstants.SHOW_CU_CHILDREN);
-			((StandardJavaElementContentProvider)fViewer.getContentProvider()).setProvideMembers(showCUChildren);
+			((StandardJavaElementContentProvider) fViewer.getContentProvider()).setProvideMembers(showCUChildren);
 
 			refreshViewer= true;
 		} else if (MembersOrderPreferenceCache.isMemberOrderProperty(event.getProperty())) {
@@ -1266,14 +1392,15 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Returns the <code>IShowInSource</code> for this view.
+	 * 
 	 * @return the <code>IShowInSource</code>
 	 */
 	protected IShowInSource getShowInSource() {
 		return new IShowInSource() {
 			public ShowInContext getShowInContext() {
 				return new ShowInContext(
-					getTreeViewer().getInput(),
-					getTreeViewer().getSelection());
+						getTreeViewer().getInput(),
+						getTreeViewer().getSelection());
 			}
 		};
 	}
@@ -1289,7 +1416,7 @@ public class PackageExplorerPart extends ViewPart
 		if (enabled) {
 			page.addPartListener(fLinkWithEditorListener);
 
-			IEditorPart editor = page.getActiveEditor();
+			IEditorPart editor= page.getActiveEditor();
 			if (editor != null)
 				editorActivated(editor);
 		} else {
@@ -1300,7 +1427,7 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Returns the name for the given element. Used as the name for the current frame.
-	 *
+	 * 
 	 * @param element the element
 	 * @return the name of the frame
 	 */
@@ -1314,112 +1441,112 @@ public class PackageExplorerPart extends ViewPart
 		}
 	}
 
-    public int tryToReveal(Object element) {
+	public int tryToReveal(Object element) {
 		if (revealElementOrParent(element))
-            return IStatus.OK;
+			return IStatus.OK;
 
-        WorkingSetFilterActionGroup workingSetGroup= fActionSet.getWorkingSetActionGroup().getFilterGroup();
-        if (workingSetGroup != null) {
-		    IWorkingSet workingSet= workingSetGroup.getWorkingSet();
-		    if (workingSetGroup.isFiltered(getVisibleParent(element), element)) {
-		    	String message;
-		    	if (element instanceof IJavaElement) {
-		    		String elementLabel= JavaElementLabels.getElementLabel((IJavaElement)element, JavaElementLabels.ALL_DEFAULT);
-		    		message= Messages.format(PackagesMessages.PackageExplorerPart_notFoundSepcific, new String[] {elementLabel, BasicElementLabels.getWorkingSetLabel(workingSet)});
-		    	} else {
-		    		message= Messages.format(PackagesMessages.PackageExplorer_notFound, BasicElementLabels.getWorkingSetLabel(workingSet));
-		    	}
-		        if (MessageDialog.openQuestion(getSite().getShell(), PackagesMessages.PackageExplorer_filteredDialog_title, message)) {
-		            workingSetGroup.setWorkingSet(null, true);
-		            if (revealElementOrParent(element))
-		                return IStatus.OK;
-		        } else {
-		            return IStatus.CANCEL;
-		        }
-		    }
-        }
-        // try to remove filters
-        CustomFiltersActionGroup filterGroup= fActionSet.getCustomFilterActionGroup();
-        String[] currentFilters= filterGroup.internalGetEnabledFilterIds();
-        String[] newFilters= filterGroup.removeFiltersFor(getVisibleParent(element), element, getTreeViewer().getContentProvider());
-        if (currentFilters.length > newFilters.length) {
-        	String message;
-        	if (element instanceof IJavaElement) {
-	    		String elementLabel= JavaElementLabels.getElementLabel((IJavaElement)element, JavaElementLabels.ALL_DEFAULT);
-	    		message= Messages.format(PackagesMessages.PackageExplorerPart_removeFiltersSpecific, elementLabel);
-	    	} else {
-	    		message= PackagesMessages.PackageExplorer_removeFilters;
-	    	}
-            if (MessageDialog.openQuestion(getSite().getShell(), PackagesMessages.PackageExplorer_filteredDialog_title, message)) {
-                filterGroup.setFilters(newFilters);
-                if (revealElementOrParent(element))
-	                return IStatus.OK;
-            } else {
-	            return IStatus.CANCEL;
-            }
-        }
-        FrameAction action= fActionSet.getUpAction();
-        while (action.getFrameList().getCurrentIndex() > 0) {
-        	// only try to go up if there is a parent frame
-        	// fix for bug# 63769 Endless loop after Show in Package Explorer
-        	if (action.getFrameList().getSource().getFrame(IFrameSource.PARENT_FRAME, 0) == null)
-        		break;
-            action.run();
-            if (revealElementOrParent(element))
-	            return IStatus.OK;
-        }
-        return IStatus.ERROR;
-    }
+		WorkingSetFilterActionGroup workingSetGroup= fActionSet.getWorkingSetActionGroup().getFilterGroup();
+		if (workingSetGroup != null) {
+			IWorkingSet workingSet= workingSetGroup.getWorkingSet();
+			if (workingSetGroup.isFiltered(getVisibleParent(element), element)) {
+				String message;
+				if (element instanceof IJavaElement) {
+					String elementLabel= JavaElementLabels.getElementLabel((IJavaElement) element, JavaElementLabels.ALL_DEFAULT);
+					message= Messages.format(PackagesMessages.PackageExplorerPart_notFoundSepcific, new String[] { elementLabel, BasicElementLabels.getWorkingSetLabel(workingSet) });
+				} else {
+					message= Messages.format(PackagesMessages.PackageExplorer_notFound, BasicElementLabels.getWorkingSetLabel(workingSet));
+				}
+				if (MessageDialog.openQuestion(getSite().getShell(), PackagesMessages.PackageExplorer_filteredDialog_title, message)) {
+					workingSetGroup.setWorkingSet(null, true);
+					if (revealElementOrParent(element))
+						return IStatus.OK;
+				} else {
+					return IStatus.CANCEL;
+				}
+			}
+		}
+		// try to remove filters
+		CustomFiltersActionGroup filterGroup= fActionSet.getCustomFilterActionGroup();
+		String[] currentFilters= filterGroup.internalGetEnabledFilterIds();
+		String[] newFilters= filterGroup.removeFiltersFor(getVisibleParent(element), element, getTreeViewer().getContentProvider());
+		if (currentFilters.length > newFilters.length) {
+			String message;
+			if (element instanceof IJavaElement) {
+				String elementLabel= JavaElementLabels.getElementLabel((IJavaElement) element, JavaElementLabels.ALL_DEFAULT);
+				message= Messages.format(PackagesMessages.PackageExplorerPart_removeFiltersSpecific, elementLabel);
+			} else {
+				message= PackagesMessages.PackageExplorer_removeFilters;
+			}
+			if (MessageDialog.openQuestion(getSite().getShell(), PackagesMessages.PackageExplorer_filteredDialog_title, message)) {
+				filterGroup.setFilters(newFilters);
+				if (revealElementOrParent(element))
+					return IStatus.OK;
+			} else {
+				return IStatus.CANCEL;
+			}
+		}
+		FrameAction action= fActionSet.getUpAction();
+		while (action.getFrameList().getCurrentIndex() > 0) {
+			// only try to go up if there is a parent frame
+			// fix for bug# 63769 Endless loop after Show in Package Explorer
+			if (action.getFrameList().getSource().getFrame(IFrameSource.PARENT_FRAME, 0) == null)
+				break;
+			action.run();
+			if (revealElementOrParent(element))
+				return IStatus.OK;
+		}
+		return IStatus.ERROR;
+	}
 
-    private boolean revealElementOrParent(Object element) {
-        if (revealAndVerify(element))
-		    return true;
+	private boolean revealElementOrParent(Object element) {
+		if (revealAndVerify(element))
+			return true;
 		element= getVisibleParent(element);
 		if (element != null) {
-		    if (revealAndVerify(element))
-		        return true;
-		    if (element instanceof IJavaElement) {
-		        IResource resource= ((IJavaElement)element).getResource();
-		        if (resource != null) {
-		            if (revealAndVerify(resource))
-		                return true;
-		        }
-		    }
+			if (revealAndVerify(element))
+				return true;
+			if (element instanceof IJavaElement) {
+				IResource resource= ((IJavaElement) element).getResource();
+				if (resource != null) {
+					if (revealAndVerify(resource))
+						return true;
+				}
+			}
 		}
-        return false;
-    }
+		return false;
+	}
 
-    private Object getVisibleParent(Object object) {
-    	// Fix for http://dev.eclipse.org/bugs/show_bug.cgi?id=19104
-    	if (object == null)
-    		return null;
-    	if (!(object instanceof IJavaElement))
-    	    return object;
-    	IJavaElement element2= (IJavaElement) object;
-    	switch (element2.getElementType()) {
-    		case IJavaElement.IMPORT_DECLARATION:
-    		case IJavaElement.PACKAGE_DECLARATION:
-    		case IJavaElement.IMPORT_CONTAINER:
-    		case IJavaElement.TYPE:
-    		case IJavaElement.METHOD:
-    		case IJavaElement.FIELD:
-    		case IJavaElement.INITIALIZER:
-    			// select parent cu/classfile
-    			element2= (IJavaElement)element2.getOpenable();
-    			break;
-    		case IJavaElement.JAVA_MODEL:
-    			element2= null;
-    			break;
-    	}
-    	return element2;
-    }
+	private Object getVisibleParent(Object object) {
+		// Fix for http://dev.eclipse.org/bugs/show_bug.cgi?id=19104
+		if (object == null)
+			return null;
+		if (!(object instanceof IJavaElement))
+			return object;
+		IJavaElement element2= (IJavaElement) object;
+		switch (element2.getElementType()) {
+			case IJavaElement.IMPORT_DECLARATION:
+			case IJavaElement.PACKAGE_DECLARATION:
+			case IJavaElement.IMPORT_CONTAINER:
+			case IJavaElement.TYPE:
+			case IJavaElement.METHOD:
+			case IJavaElement.FIELD:
+			case IJavaElement.INITIALIZER:
+				// select parent cu/classfile
+				element2= (IJavaElement) element2.getOpenable();
+				break;
+			case IJavaElement.JAVA_MODEL:
+				element2= null;
+				break;
+		}
+		return element2;
+	}
 
-    private boolean revealAndVerify(Object element) {
-    	if (element == null)
-    		return false;
-    	selectReveal(new StructuredSelection(element));
-    	return ! getSite().getSelectionProvider().getSelection().isEmpty();
-    }
+	private boolean revealAndVerify(Object element) {
+		if (element == null)
+			return false;
+		selectReveal(new StructuredSelection(element));
+		return !getSite().getSelectionProvider().getSelection().isEmpty();
+	}
 
 	public void rootModeChanged(int newMode) {
 		fRootMode= newMode;
@@ -1434,8 +1561,8 @@ public class PackageExplorerPart extends ViewPart
 		IStructuredSelection selection= new StructuredSelection(((IStructuredSelection) fViewer.getSelection()).toArray());
 		Object input= fViewer.getInput();
 		boolean isRootInputChange= JavaCore.create(ResourcesPlugin.getWorkspace().getRoot()).equals(input)
-			|| (fWorkingSetModel != null && fWorkingSetModel.equals(input))
-			|| input instanceof IWorkingSet;
+				|| (fWorkingSetModel != null && fWorkingSetModel.equals(input))
+				|| input instanceof IWorkingSet;
 		try {
 			fViewer.getControl().setRedraw(false);
 			if (isRootInputChange) {
@@ -1465,6 +1592,7 @@ public class PackageExplorerPart extends ViewPart
 			public void run() throws Exception {
 				fWorkingSetModel= new WorkingSetModel(fMemento);
 			}
+
 			public void handleException(Throwable exception) {
 				fWorkingSetModel= new WorkingSetModel(null);
 			}
@@ -1491,6 +1619,7 @@ public class PackageExplorerPart extends ViewPart
 
 	/**
 	 * Returns the root mode: Either {@link #PROJECTS_AS_ROOTS} or {@link #WORKING_SETS_AS_ROOTS}.
+	 * 
 	 * @return returns the root mode
 	 */
 	public int getRootMode() {
