@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature url="features/com.vogella.jdt.ui.feature_1.0.4.jar" id="com.vogella.jdt.ui.feature" version="1.0.4" patch="true">
+      <category name="vogella_jdt"/>
+   </feature>
+   <category-def name="vogella_jdt" label="JDT Filtered Package Explorer"/>
+</site>
